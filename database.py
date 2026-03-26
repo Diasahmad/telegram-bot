@@ -10,7 +10,12 @@ if not DATABASE_URL:
 # CONNECTION
 # ======================
 def get_connection():
-    return psycopg.connect(DATABASE_URL)
+    try:
+        return psycopg.connect(DATABASE_URL)
+    except Exception as e:
+        print("DB CONNECTION ERROR:", e)
+        raise
+
 
 # ======================
 # INIT TABLE
@@ -34,6 +39,7 @@ def init_db():
     cur.close()
     conn.close()
 
+
 # ======================
 # SAVE
 # ======================
@@ -53,30 +59,31 @@ def save_transaction(amount, tipe, category, description):
     cur.close()
     conn.close()
 
-    return result
+    return result  # (id, created_at)
+
 
 # ======================
-# GET TRANSACTIONS
+# GET BY PERIOD (UNTUK LIST)
 # ======================
 def get_transactions_by_period(period="today"):
     conn = get_connection()
     cur = conn.cursor()
 
     if period == "today":
-        filter_query = "DATE(created_at) = CURRENT_DATE"
+        query = "DATE(created_at) = CURRENT_DATE"
     elif period == "week":
-        filter_query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
+        query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
     elif period == "month":
-        filter_query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
+        query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
     elif period == "year":
-        filter_query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
+        query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
     else:
-        filter_query = "TRUE"
+        query = "TRUE"
 
     cur.execute(f"""
         SELECT id, amount, type, category, description, created_at
         FROM transactions
-        WHERE {filter_query}
+        WHERE {query}
         ORDER BY created_at DESC
     """)
 
@@ -84,112 +91,8 @@ def get_transactions_by_period(period="today"):
 
     cur.close()
     conn.close()
-
     return result
 
-# ======================
-# SUMMARY
-# ======================
-def get_summary(period=None):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    filter_query = "TRUE"
-
-    if period == "today":
-        filter_query = "DATE(created_at) = CURRENT_DATE"
-    elif period == "week":
-        filter_query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
-    elif period == "month":
-        filter_query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
-    elif period == "year":
-        filter_query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
-
-    cur.execute(f"""
-        SELECT type, SUM(amount)
-        FROM transactions
-        WHERE {filter_query}
-        GROUP BY type
-    """)
-
-    result = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return result
-
-# ======================
-# CATEGORY SUMMARY
-# ======================
-def get_category_summary(period=None):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    filter_query = "TRUE"
-
-    if period == "today":
-        filter_query = "DATE(created_at) = CURRENT_DATE"
-    elif period == "week":
-        filter_query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
-    elif period == "month":
-        filter_query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
-    elif period == "year":
-        filter_query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
-
-    cur.execute(f"""
-        SELECT category, SUM(amount)
-        FROM transactions
-        WHERE type = 'expense'
-        AND {filter_query}
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """)
-
-    result = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return result
-
-# ======================
-# YEARLY SUMMARY (UNTUK /list year)
-# ======================
-def get_yearly_summary():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT 
-            DATE_TRUNC('month', created_at) AS month,
-            type,
-            SUM(amount)
-        FROM transactions
-        WHERE DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)
-        GROUP BY month, type
-        ORDER BY month
-    """)
-
-    result = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return result
-
-# ======================
-# DELETE
-# ======================
-def delete_transaction(transaction_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
-
-    conn.commit()
-    cur.close()
-    conn.close()
 
 # ======================
 # UPDATE
@@ -222,14 +125,123 @@ def update_transaction(transaction_id, amount=None, tipe=None, category=None, de
 
     values.append(transaction_id)
 
-    cur.execute(f"""
+    query = f"""
         UPDATE transactions
         SET {", ".join(fields)}
         WHERE id = %s
-    """, values)
+    """
+
+    cur.execute(query, values)
 
     conn.commit()
     cur.close()
     conn.close()
 
     return True
+
+
+# ======================
+# DELETE
+# ======================
+def delete_transaction(transaction_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM transactions
+        WHERE id = %s
+    """, (transaction_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return True
+
+
+# ======================
+# SUMMARY (FLEXIBLE)
+# ======================
+def get_summary(period=None):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    filter_query = "TRUE"
+
+    if period == "today":
+        filter_query = "DATE(created_at) = CURRENT_DATE"
+    elif period == "week":
+        filter_query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
+    elif period == "month":
+        filter_query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
+    elif period == "year":
+        filter_query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
+
+    cur.execute(f"""
+        SELECT type, SUM(amount)
+        FROM transactions
+        WHERE {filter_query}
+        GROUP BY type
+    """)
+
+    result = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return result
+
+
+# ======================
+# CATEGORY SUMMARY
+# ======================
+def get_category_summary(period=None):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    filter_query = "TRUE"
+
+    if period == "today":
+        filter_query = "DATE(created_at) = CURRENT_DATE"
+    elif period == "week":
+        filter_query = "DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)"
+    elif period == "month":
+        filter_query = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
+    elif period == "year":
+        filter_query = "DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)"
+
+    cur.execute(f"""
+        SELECT category, SUM(amount)
+        FROM transactions
+        WHERE type = 'expense'
+        AND {filter_query}
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """)
+
+    result = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return result
+
+
+# ======================
+# PREVIOUS MONTH (INSIGHT)
+# ======================
+def get_previous_month_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT type, SUM(amount)
+        FROM transactions
+        WHERE DATE_TRUNC('month', created_at) =
+              DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+        GROUP BY type
+    """)
+
+    result = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return result

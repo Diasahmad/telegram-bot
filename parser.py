@@ -1,11 +1,10 @@
 import re
 
 # ======================
-# AMOUNT PARSER (STABIL)
+# AMOUNT (FIX REAL WORLD)
 # ======================
 def parse_amount(text):
     text = text.lower()
-
     text = text.replace(".", "")
     text = text.replace("ribu", "k").replace("rb", "k")
     text = text.replace("juta", "jt")
@@ -31,44 +30,34 @@ def parse_amount(text):
 
 
 # ======================
-# TYPE DETECTION
+# TYPE
 # ======================
 def detect_type(text):
     text = text.lower()
 
-    expense_keywords = [
-        "beli", "bayar", "jajan", "makan", "minum",
-        "shopee", "sedekah", "infaq", "bensin"
-    ]
-
-    income_keywords = [
-        "menabung", "bonus", "dapat", "transfer masuk", "uang saku"
-    ]
-
-    if any(word in text for word in expense_keywords):
+    if any(x in text for x in ["beli","bayar","jajan","makan","minum","shopee","sedekah"]):
         return "expense"
 
-    if any(word in text for word in income_keywords):
+    if any(x in text for x in ["gaji","bonus","dapat","transfer masuk"]):
         return "income"
 
     return "unknown"
 
 
 # ======================
-# CATEGORY (LEBIH REAL)
+# CATEGORY (REALISTIC)
 # ======================
 def categorize(text):
     text = text.lower()
 
     mapping = {
-        "makan": ["makan", "ayam", "nasi", "mie"],
-        "minum": ["kopi", "teh", "minum"],
-        "transport": ["bensin", "gojek", "grab"],
-        "tagihan": ["listrik", "air", "wifi"],
-        "hiburan": ["game", "netflix", "nonton"],
-        "belanja": ["shopee", "tokopedia"],
-        "infaq": ["sedekah", "infaq"],
-        "tabungan": ["menabung", "uang saku"]
+        "makan": ["makan","ayam","nasi","mie"],
+        "minum": ["kopi","teh","minum"],
+        "transport": ["bensin","gojek","grab"],
+        "tagihan": ["listrik","air","wifi"],
+        "hiburan": ["game","netflix","nonton"],
+        "belanja": ["shopee","tokopedia"],
+        "infaq": ["sedekah","infaq"],
     }
 
     for cat, keys in mapping.items():
@@ -79,19 +68,16 @@ def categorize(text):
 
 
 # ======================
-# DESCRIPTION (BERSIH)
+# DESCRIPTION (SAFE)
 # ======================
 def extract_description(text):
     text = text.lower()
-
     text = re.sub(r'\b\d+\s*(k|jt)?\b', '', text)
-    text = text.replace(".", "").strip()
-
-    return text
+    return text.strip()
 
 
 # ======================
-# MAIN PARSER
+# MAIN
 # ======================
 def parse_transaction(text):
     return {
