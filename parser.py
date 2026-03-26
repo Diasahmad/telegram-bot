@@ -101,15 +101,12 @@ def detect_type(text):
         return "expense"
 
     elif any(word in text for word in [
-        "gaji", "masuk", "dapat", "uang saku"
+        "gaji", "masuk", "dapat", "uang saku", "menabung", "tabungan"
     ]):
         return "income"
 
     elif "investasi" in text:
         return "expense"  # asumsi sederhana
-
-    elif "menabung" in text:
-        return "expense"  # lebih logis daripada income
 
     return "unknown"
 
@@ -138,7 +135,7 @@ def categorize(text):
         return "shopee"
     elif any(word in text for word in ["uang saku"]):
         return "pemasukan"
-    elif any(word in text for word in ["menabung"]):
+    elif any(word in text for word in ["menabung", "tabungan"]):
         return "tabungan"
     elif "admin" in text:
         return "admin"

@@ -14,7 +14,11 @@ from database import (
     init_db,
     delete_range,
     get_today_transactions, 
-    update_transaction_amount
+    update_transaction_amount,
+    delete_by_id,
+    get_transactions_by_date, 
+    get_transactions_by_month,
+    get_transactions_by_year
 )
 
 from telegram import Update
@@ -105,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "📌 DAFTAR COMMAND\n\n"
+        "📌 MENU BOT KEUANGAN\n\n"
 
         "📥 INPUT DATA\n"
         "Ketik langsung:\n"
@@ -116,24 +120,32 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/summary → total keseluruhan\n"
         "/today → hari ini\n"
         "/month → bulan ini\n"
-        "/year → per bulan dalam 1 tahun\n\n"
+        "/year → ringkasan per bulan\n\n"
 
         "📈 ANALISIS\n"
-        "/rank → kategori pengeluaran + ringkasan\n\n"
+        "/rank → kategori pengeluaran + statistik\n\n"
 
-        "🧾 DATA\n"
-        "/history → riwayat hari ini\n\n"
+        "🧾 HISTORY DATA\n"
+        "/history → hari ini\n"
+        "/history DD-MM-YYYY → tanggal tertentu\n"
+        "/history MM-YYYY → bulan tertentu\n"
+        "/history YYYY → tahun tertentu\n\n"
 
         "✏️ EDIT DATA\n"
         "/edit <id> <nominal>\n"
         "contoh: /edit 5 50000\n\n"
 
         "🗑️ HAPUS DATA\n"
-        "/delete today | week | month | year\n\n"
+        "/delete today | week | month | year\n"
+        "/deleteid <id>\n\n"
 
-        "⚠️ KONFIRMASI\n"
-        "/confirm → jalankan aksi\n"
-        "/cancel → batalkan aksi\n"
+        "⚠️ KONFIRMASI (WAJIB)\n"
+        "/confirm → jalankan aksi delete/edit\n"
+        "/cancel → batalkan aksi\n\n"
+
+        "💡 TIPS\n"
+        "- Gunakan /history untuk melihat ID\n"
+        "- Semua edit & delete harus dikonfirmasi\n"
     )
 
     await update.message.reply_text(text)
@@ -340,23 +352,79 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # HANDLE /HISTORY
 # ======================
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = get_today_transactions()
+    args = context.args
 
-    if not data:
-        await update.message.reply_text("Tidak ada transaksi hari ini.")
+    # ======================
+    # DEFAULT → HARI INI
+    # ======================
+    if not args:
+        data = get_today_transactions()
+        title = "History Hari Ini"
+
+    else:
+        arg = args[0]
+
+        # ======================
+        # FORMAT: DD-MM-YYYY
+        # ======================
+        if len(arg.split("-")) == 3:
+            try:
+                day, month, year = map(int, arg.split("-"))
+                date = f"{year:04d}-{month:02d}-{day:02d}"
+
+                data = get_transactions_by_date(date)
+                title = f"History {arg}"
+            except:
+                await update.message.reply_text("Format tanggal salah. Gunakan DD-MM-YYYY")
+                return
+
+        # ======================
+        # FORMAT: MM-YYYY
+        # ======================
+        elif len(arg.split("-")) == 2:
+            try:
+                month, year = map(int, arg.split("-"))
+
+                data = get_transactions_by_month(year, month)
+                title = f"History {arg}"
+            except:
+                await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
+                return
+
+        else:
+            await update.message.reply_text("Format tidak dikenali.")
+            return
+
+# ======================
+# FORMAT: YYYY
+# ======================
+elif len(arg) == 4 and arg.isdigit():
+    try:
+        year = int(arg)
+
+        data = get_transactions_by_year(year)
+        title = f"History Tahun {year}"
+    except:
+        await update.message.reply_text("Format tahun salah. Gunakan YYYY")
         return
 
-    text = "History Hari Ini:\n\n"
+# ======================
+# OUTPUT
+# ======================
+    if not data:
+        await update.message.reply_text("Tidak ada data.")
+        return
 
-    for row in data:
+    text = f"{title}:\n\n"
+
+    for i, row in enumerate(data, start=1):
         trx_id, amount, tipe, kategori, desc, created_at = row
 
         created_at = adjust_timezone(created_at)
-
         tipe_text = "+" if tipe == "income" else "-"
 
         text += (
-            f"ID: {trx_id}\n"
+            f"{i}. (ID: {trx_id})\n"
             f"{tipe_text} {format_rupiah(amount)} | {kategori}\n"
             f"{desc}\n"
             f"{format_tanggal(created_at)}\n\n"
@@ -394,7 +462,7 @@ async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================
-# HANDLE /DELETER
+# HANDLE /DELETE
 # ======================
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -416,6 +484,30 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Ketik: /confirm delete {mode}\n"
         f"Atau: /cancel"
     )
+
+# HANDLE /DELETE ID
+# ======================
+async def delete_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Gunakan:\n/deleteid <id>\nContoh: /deleteid 5"
+        )
+        return
+
+    try:
+        trx_id = int(context.args[0])
+    except:
+        await update.message.reply_text("ID harus angka.")
+        return
+
+    # simpan ke pending action
+    set_pending_action(context, "delete_id", {"id": trx_id})
+
+    await update.message.reply_text(
+        f"⚠️ Yakin hapus transaksi ID {trx_id}?\n"
+        f"Ketik /confirm untuk lanjut atau /cancel"
+    )
+
 # ======================
 # KONFIRMASI YA/TIDAK
 # ======================
@@ -447,6 +539,18 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"{deleted} data berhasil dihapus ({mode})."
+        )
+   elif action == "delete_id":
+        trx_id = data["id"]
+
+        deleted = delete_by_id(trx_id)
+
+        if deleted == 0:
+          await update.message.reply_text("ID tidak ditemukan.")
+
+    else:
+        await update.message.reply_text(
+            f"Transaksi {trx_id} berhasil dihapus."
         )
 
     elif action == "edit":
@@ -504,6 +608,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("menu", help_command))
+    app.add_handler(CommandHandler("deleteid", delete_id))
 
     app.add_error_handler(error_handler)
 

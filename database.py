@@ -302,6 +302,23 @@ def delete_range(mode):
     else:
         return None
 
+def delete_by_id(transaction_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        DELETE FROM transactions
+        WHERE id = %s
+    """, (transaction_id,))
+
+    deleted = cur.rowcount
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return deleted
+
 def get_today_transactions():
     conn = get_connection()
     cur = conn.cursor()
@@ -337,3 +354,41 @@ def update_transaction_amount(transaction_id, new_amount):
     conn.close()
 
     return updated
+
+def get_transactions_by_date(date):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, amount, type, category, description, created_at
+        FROM transactions
+        WHERE DATE(created_at) = %s
+        ORDER BY created_at DESC
+    """, (date,))
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+def get_transactions_by_month(year, month):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, amount, type, category, description, created_at
+        FROM transactions
+        WHERE EXTRACT(YEAR FROM created_at) = %s
+        AND EXTRACT(MONTH FROM created_at) = %s
+        ORDER BY created_at DESC
+    """, (year, month))
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
