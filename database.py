@@ -1,5 +1,5 @@
 import os
-import psycopg2
+import psycopg
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -10,7 +10,7 @@ if not DATABASE_URL:
 # CONNECTION
 # ======================
 def get_connection():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg.connect(DATABASE_URL)
 
 # ======================
 # INIT TABLE
