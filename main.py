@@ -27,7 +27,11 @@ TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN tidak ditemukan")
 
+# ======================
+# STATE
+# ======================
 user_state = {}
+user_last_list = {}
 
 # ======================
 # UTIL
@@ -43,24 +47,18 @@ def adjust_timezone(dt):
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 BOT KEUANGAN AKTIF\n\n"
-
-        "📌 CARA INPUT:\n"
-        "Ketik transaksi langsung\n"
-        "Contoh:\n"
+        "🤖 BOT KEUANGAN\n\n"
+        "📌 Input langsung:\n"
         "- beli makan 20k\n"
         "- gaji 3jt\n\n"
-
-        "⚙️ COMMAND:\n"
+        "⚙️ Command:\n"
         "/list [today|week|month|year]\n"
         "/summary [period]\n"
         "/insight\n"
         "/edit <id> field=value\n"
         "/delete <id>\n"
-        "/help\n\n"
-
-        "📌 FLOW:\n"
-        "1. Input → 2. Ketik 'ya' → 3. Cek /list → 4. Analisis /insight"
+        "/delete 1-5 (range)\n"
+        "/help"
     )
 
 # ======================
@@ -68,21 +66,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📖 BANTUAN BOT\n\n"
-
-        "🟢 INPUT:\n"
-        "Contoh: beli kopi 20k\n\n"
-
-        "🟡 COMMAND:\n"
+        "📖 BANTUAN\n\n"
+        "INPUT:\n"
+        "beli kopi 20k\n\n"
+        "COMMAND:\n"
         "/list → lihat data\n"
         "/summary → ringkasan\n"
         "/insight → analisis\n"
         "/edit → edit data\n"
-        "/delete → hapus data\n\n"
-
-        "🔁 TIPS:\n"
-        "- Gunakan /list sebelum edit/delete\n"
-        "- Gunakan /insight untuk kontrol pengeluaran"
+        "/delete → hapus data\n"
+        "/delete 1-5 → hapus range\n\n"
+        "⚠️ Gunakan /list sebelum delete range"
     )
 
 # ======================
@@ -109,22 +103,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{data['category']} - Rp {format_rupiah(data['amount'])}"
             )
 
-            del user_state[user_id]
         else:
-            del user_state[user_id]
             await update.message.reply_text("❌ Dibatalkan")
+
+        del user_state[user_id]
         return
 
     # ===== CONFIRM DELETE =====
-    if user_id in user_state and user_state[user_id]["action"] == "confirm_delete":
-        if text in ["ya", "y"]:
-            delete_transaction(user_state[user_id]["id"])
-            await update.message.reply_text("🗑️ Data dihapus")
+    if user_id in user_state:
+
+        # SINGLE
+        if user_state[user_id]["action"] == "confirm_delete":
+            if text in ["ya", "y"]:
+                tid = user_state[user_id]["id"]
+                delete_transaction(tid)
+                await update.message.reply_text(f"🗑️ ID {tid} dihapus")
+            else:
+                await update.message.reply_text("❌ Batal")
+
             del user_state[user_id]
-        else:
+            return
+
+        # RANGE
+        if user_state[user_id]["action"] == "confirm_delete_range":
+            if text in ["ya", "y"]:
+                ids = user_state[user_id]["ids"]
+
+                for tid in ids:
+                    delete_transaction(tid)
+
+                await update.message.reply_text(
+                    f"🗑️ {len(ids)} data dihapus"
+                )
+            else:
+                await update.message.reply_text("❌ Batal")
+
             del user_state[user_id]
-            await update.message.reply_text("❌ Batal hapus")
-        return
+            return
 
     # ===== PARSE =====
     data = parse_transaction(text)
@@ -137,7 +152,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Tipe tidak jelas")
         return
 
-    user_state[user_id] = {"action": "confirm_save", "data": data}
+    user_state[user_id] = {
+        "action": "confirm_save",
+        "data": data
+    }
 
     await update.message.reply_text(
         f"Konfirmasi:\n\n"
@@ -152,12 +170,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # LIST
 # ======================
 async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     period = context.args[0] if context.args else "today"
+
     data = get_transactions_by_period(period)
 
     if not data:
         await update.message.reply_text("Tidak ada data.")
         return
+
+    user_last_list[user_id] = data
 
     text = f"📋 Data ({period})\n\n"
 
@@ -187,7 +209,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             expense = v or 0
 
     await update.message.reply_text(
-        f"💰 Summary ({period or 'total'})\n\n"
+        f"💰 Summary\n\n"
         f"Pemasukan: Rp {format_rupiah(income)}\n"
         f"Pengeluaran: Rp {format_rupiah(expense)}\n"
         f"Saldo: Rp {format_rupiah(income-expense)}"
@@ -212,7 +234,7 @@ async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     categories = get_category_summary("month")
 
-    text = "📊 INSIGHT BULAN INI\n\n"
+    text = "📊 INSIGHT\n\n"
 
     if expense > income:
         text += "❌ Defisit\n"
@@ -222,16 +244,16 @@ async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if categories:
         cat, val = categories[0]
         total = sum(x[1] for x in categories if x[1])
-        persen = (val/total)*100 if total else 0
+        persen = (val / total) * 100 if total else 0
 
-        text += f"\nKategori terbesar: {cat} ({persen:.1f}%)"
+        text += f"\nTop: {cat} ({persen:.1f}%)"
 
         if persen > 50:
-            text += "\n⚠️ Terlalu dominan"
+            text += " ⚠️ Dominan"
 
     if prev_expense:
-        change = ((expense-prev_expense)/prev_expense)*100
-        text += f"\n\nTrend: {change:.1f}%"
+        change = ((expense - prev_expense) / prev_expense) * 100
+        text += f"\nTrend: {change:.1f}%"
 
     await update.message.reply_text(text)
 
@@ -241,12 +263,61 @@ async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
+    if not context.args:
+        await update.message.reply_text("Gunakan /delete <id> atau <range>")
+        return
+
+    arg = context.args[0]
+
+    # RANGE
+    if "-" in arg:
+        if uid not in user_last_list:
+            await update.message.reply_text("Gunakan /list dulu")
+            return
+
+        try:
+            start, end = map(int, arg.split("-"))
+            data = user_last_list[uid]
+
+            if start < 1 or end > len(data) or start > end:
+                await update.message.reply_text("Range tidak valid")
+                return
+
+            selected = data[start-1:end]
+            ids = [row[0] for row in selected]
+
+            preview = "\n".join([f"{i+start}. ID {row[0]}" for i, row in enumerate(selected)])
+
+            user_state[uid] = {
+                "action": "confirm_delete_range",
+                "ids": ids
+            }
+
+            await update.message.reply_text(
+                f"⚠️ Hapus {len(ids)} data:\n\n{preview}\n\n"
+                f"Ketik 'ya' atau 'batal'"
+            )
+
+        except:
+            await update.message.reply_text("Format salah. /delete 1-5")
+
+        return
+
+    # SINGLE
     try:
-        tid = int(context.args[0])
-        user_state[uid] = {"action":"confirm_delete","id":tid}
-        await update.message.reply_text("Yakin hapus? ketik 'ya' atau 'batal'")
+        tid = int(arg)
+
+        user_state[uid] = {
+            "action": "confirm_delete",
+            "id": tid
+        }
+
+        await update.message.reply_text(
+            f"Yakin hapus ID {tid}? ketik 'ya' atau 'batal'"
+        )
+
     except:
-        await update.message.reply_text("Format salah")
+        await update.message.reply_text("ID tidak valid")
 
 # ======================
 # EDIT
@@ -273,7 +344,7 @@ async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         description=updates.get("description"),
     )
 
-    await update.message.reply_text("✅ Data diupdate")
+    await update.message.reply_text("✅ Updated")
 
 # ======================
 # MAIN
