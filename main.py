@@ -6,6 +6,9 @@ from database import (
     save_transaction,
     get_summary,
     get_today_summary,
+    get_rank_by_date,
+    get_rank_by_month,
+    get_rank_by_year,
     get_month_summary,
     get_category_summary,
     get_total_summary,
@@ -17,7 +20,8 @@ from database import (
     update_transaction_amount,
     delete_by_id,
     get_transactions_by_date, 
-    get_transactions_by_month,
+    get_month_summary_by_year, 
+    get_month_category_summary,
     get_transactions_by_year
 )
 
@@ -120,16 +124,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/summary → total keseluruhan\n"
         "/today → hari ini\n"
         "/month → bulan ini\n"
-        "/year → ringkasan per bulan\n\n"
+        "/year → ringkasan per bulan (1 tahun)\n\n"
 
-        "📈 ANALISIS\n"
-        "/rank → kategori pengeluaran + statistik\n\n"
+        "🧾 HISTORY (BERDASARKAN WAKTU)\n"
+        "/history → hari ini (detail transaksi)\n"
+        "/history DD-MM-YYYY → detail per tanggal\n"
+        "/history MM-YYYY → ringkasan bulanan + kategori\n"
+        "/history YYYY → ringkasan per bulan (1 tahun)\n\n"
 
-        "🧾 HISTORY DATA\n"
-        "/history → hari ini\n"
-        "/history DD-MM-YYYY → tanggal tertentu\n"
-        "/history MM-YYYY → bulan tertentu\n"
-        "/history YYYY → tahun tertentu\n\n"
+        "📈 ANALISIS (RANKING PENGELUARAN)\n"
+        "/rank → hari ini\n"
+        "/rank DD-MM-YYYY → ranking per tanggal\n"
+        "/rank MM-YYYY → ranking per bulan\n"
+        "/rank YYYY → ranking per tahun\n\n"
 
         "✏️ EDIT DATA\n"
         "/edit <id> <nominal>\n"
@@ -140,11 +147,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/deleteid <id>\n\n"
 
         "⚠️ KONFIRMASI (WAJIB)\n"
-        "/confirm → jalankan aksi delete/edit\n"
+        "/confirm → jalankan edit/delete\n"
         "/cancel → batalkan aksi\n\n"
 
-        "💡 TIPS\n"
-        "- Gunakan /history untuk melihat ID\n"
+        "💡 ALUR PENGGUNAAN (PENTING)\n"
+        "1. /history → lihat data & ID\n"
+        "2. /edit atau /deleteid\n"
+        "3. /confirm\n\n"
+
+        "📌 CATATAN\n"
+        "- ID hanya bisa dilihat dari /history\n"
         "- Semua edit & delete harus dikonfirmasi\n"
     )
 
@@ -311,23 +323,84 @@ async def year(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # RANK
 # ======================
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = get_today_category_summary()
+    args = context.args
 
-    text = "Ranking Pengeluaran Hari Ini:\n\n"
+    # ======================
+    # DEFAULT → HARI INI
+    # ======================
+    if not args:
+        data = get_today_category_summary()
+        title = "Ranking Hari Ini"
 
-    if data:
-        total_today = sum(row[1] for row in data if row[1])
-
-        for i, row in enumerate(data, start=1):
-            kategori = row[0]
-            total = row[1] or 0
-            persen = (total / total_today) * 100 if total_today else 0
-
-            text += f"{i}. {kategori} - {format_rupiah(total)} ({persen:.1f}%)\n"
-
-        text += f"\nTotal: {format_rupiah(total_today)}"
     else:
-        text += "Belum ada pengeluaran hari ini."
+        arg = args[0]
+
+        # ======================
+        # DD-MM-YYYY
+        # ======================
+        if len(arg.split("-")) == 3:
+            try:
+                day, month, year = map(int, arg.split("-"))
+                date = f"{year:04d}-{month:02d}-{day:02d}"
+
+                data = get_rank_by_date(date)
+                title = f"Ranking {arg}"
+            except:
+                await update.message.reply_text("Format tanggal salah.")
+                return
+
+        # ======================
+        # MM-YYYY
+        # ======================
+        elif len(arg.split("-")) == 2:
+            try:
+                month, year = map(int, arg.split("-"))
+
+                data = get_rank_by_month(month, year)
+                title = f"Ranking {arg}"
+            except:
+                await update.message.reply_text("Format bulan salah.")
+                return
+
+        # ======================
+        # YYYY
+        # ======================
+        elif len(arg) == 4 and arg.isdigit():
+            try:
+                year = int(arg)
+
+                data = get_rank_by_year(year)
+                title = f"Ranking Tahun {year}"
+            except:
+                await update.message.reply_text("Format tahun salah.")
+                return
+
+        else:
+            await update.message.reply_text("Format tidak dikenali.")
+            return
+
+    # ======================
+    # OUTPUT
+    # ======================
+    if not data:
+        await update.message.reply_text("Tidak ada data.")
+        return
+
+    total = sum(row[1] for row in data if row[1])
+
+    text = f"{title}\n\n"
+
+    for i, row in enumerate(data, start=1):
+        kategori = row[0]
+        amount = row[1] or 0
+        persen = (amount / total) * 100 if total else 0
+
+        text += f"{i}. {kategori}\n"
+        text += f"   {format_rupiah(amount)} ({persen:.1f}%)\n"
+
+    text += f"\nTotal Pengeluaran: {format_rupiah(total)}"
+
+    await update.message.reply_text(text)
 
     # Bulan
     month_data = get_month_summary()
@@ -383,32 +456,118 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ======================
         # MM-YYYY
         # ======================
-        elif len(parts) == 2:
-            try:
-                month, year = map(int, parts)
+        elif len(arg.split("-")) == 2:
+    try:
+        month, year = map(int, arg.split("-"))
 
-                data = get_transactions_by_month(year, month)
-                title = f"History {arg}"
-            except:
-                await update.message.reply_text("Format bulan salah (MM-YYYY)")
-                return
+        data = get_month_summary_by_year(month, year)
+
+        if not data:
+            await update.message.reply_text("Tidak ada data.")
+            return
+
+        income, expense = 0, 0
+
+        for row in data:
+            if row[0] == "income":
+                income = row[1] or 0
+            elif row[0] == "expense":
+                expense = row[1] or 0
+
+        nama_bulan = [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ]
+
+        text = f"History {nama_bulan[month-1]} {year}\n\n"
+        text += f"Pemasukan: {format_rupiah(income)}\n"
+        text += f"Pengeluaran: {format_rupiah(expense)}\n"
+        text += f"Saldo: {format_rupiah(income - expense)}\n"
+
+# ======================
+# OPTIONAL: KATEGORI
+# ======================
+        cat_data = get_month_category_summary(month, year)
+
+        if cat_data:
+            text += "\nTop Pengeluaran:\n"
+
+            total_exp = sum(row[1] for row in cat_data if row[1])
+
+            for i, row in enumerate(cat_data[:5], start=1):
+                kategori = row[0]
+                total = row[1] or 0
+                persen = (total / total_exp) * 100 if total_exp else 0
+
+                text += f"{i}. {kategori} - {format_rupiah(total)} ({persen:.1f}%)\n"
+
+        await update.message.reply_text(text)
+
+    except:
+        await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
+        return
 
         # ======================
         # YYYY
         # ======================
         elif len(arg) == 4 and arg.isdigit():
-            try:
-                year = int(arg)
+    try:
+        year = int(arg)
 
-                data = get_transactions_by_year(year)
-                title = f"History Tahun {year}"
-            except:
-                await update.message.reply_text("Format tahun salah (YYYY)")
-                return
+        data = get_transactions_by_year(year)
 
-        else:
-            await update.message.reply_text("Format tidak dikenali.")
+        if not data:
+            await update.message.reply_text("Tidak ada data.")
             return
+
+        # struktur hasil
+        result = {}
+
+        for month, tipe, amount in data:
+            month = int(month)
+
+            if month not in result:
+                result[month] = {"income": 0, "expense": 0}
+
+            result[month][tipe] = amount or 0
+
+        nama_bulan = [
+            "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+            "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
+        ]
+
+        text = f"History Tahun {year}\n\n"
+
+        total_income = 0
+        total_expense = 0
+
+        for m in range(1, 13):
+            income = result.get(m, {}).get("income", 0)
+            expense = result.get(m, {}).get("expense", 0)
+
+            if income == 0 and expense == 0:
+                continue
+
+            total_income += income
+            total_expense += expense
+
+            text += (
+                f"{nama_bulan[m-1]}:\n"
+                f"  + {format_rupiah(income)}\n"
+                f"  - {format_rupiah(expense)}\n"
+                f"  = {format_rupiah(income - expense)}\n\n"
+            )
+
+        text += "--- TOTAL ---\n"
+        text += f"+ {format_rupiah(total_income)}\n"
+        text += f"- {format_rupiah(total_expense)}\n"
+        text += f"= {format_rupiah(total_income - total_expense)}"
+
+        await update.message.reply_text(text)
+
+    except:
+        await update.message.reply_text("Format tahun salah. Gunakan YYYY")
+        return
 
     # ======================
     # OUTPUT

@@ -174,7 +174,7 @@ def get_category_summary():
     return data
 
 # ======================
-# TODAY CATEGORY
+# TODAY CATEGORY RANK
 # ======================
 def get_today_category_summary():
     conn = get_connection()
@@ -188,6 +188,73 @@ def get_today_category_summary():
         GROUP BY category
         ORDER BY SUM(amount) DESC
     """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# RANK HARI
+# ======================
+def get_rank_by_date(date):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT category, SUM(amount)
+        FROM transactions
+        WHERE type = 'expense'
+        AND DATE(created_at) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (date,))
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# RANK BULAN
+# ======================
+def get_rank_by_month(month, year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT category, SUM(amount)
+        FROM transactions
+        WHERE type = 'expense'
+        AND EXTRACT(MONTH FROM created_at) = %s
+        AND EXTRACT(YEAR FROM created_at) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (month, year))
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# RANK TAHUN
+# ======================
+def get_rank_by_year(year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT category, SUM(amount)
+        FROM transactions
+        WHERE type = 'expense'
+        AND EXTRACT(YEAR FROM created_at) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (year,))
 
     data = cur.fetchall()
 
@@ -373,17 +440,17 @@ def get_transactions_by_date(date):
 
     return data
 
-def get_transactions_by_month(year, month):
+def get_month_summary_by_year(month, year):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, amount, type, category, description, created_at
+        SELECT type, SUM(amount)
         FROM transactions
-        WHERE EXTRACT(YEAR FROM created_at) = %s
-        AND EXTRACT(MONTH FROM created_at) = %s
-        ORDER BY created_at DESC
-    """, (year, month))
+        WHERE EXTRACT(MONTH FROM created_at) = %s
+        AND EXTRACT(YEAR FROM created_at) = %s
+        GROUP BY type
+    """, (month, year))
 
     data = cur.fetchall()
 
@@ -397,10 +464,14 @@ def get_transactions_by_year(year):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, amount, type, category, description, created_at
+        SELECT 
+            EXTRACT(MONTH FROM created_at) AS month,
+            type,
+            SUM(amount)
         FROM transactions
         WHERE EXTRACT(YEAR FROM created_at) = %s
-        ORDER BY created_at DESC
+        GROUP BY month, type
+        ORDER BY month
     """, (year,))
 
     data = cur.fetchall()
