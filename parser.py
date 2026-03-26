@@ -56,37 +56,36 @@ def parse_numeric_amount(text):
     text = text.replace("ribu", "k")
     text = text.replace("rb", "k")
     text = text.replace("juta", "jt")
-
-    # hapus titik (format indo)
     text = text.replace(".", "")
 
-    match = re.search(r'(\d+)\s*(k|jt)?', text)
+    matches = re.findall(r'(\d+)\s*(k|jt)?', text)
 
-    if not match:
+    if not matches:
         return None
 
-    amount = int(match.group(1))
-    suffix = match.group(2)
+    values = []
+    for num, suffix in matches:
+        amount = int(num)
 
-    if suffix == "k":
-        amount *= 1000
-    elif suffix == "jt":
-        amount *= 1_000_000
+        if suffix == "k":
+            amount *= 1000
+        elif suffix == "jt":
+            amount *= 1_000_000
 
-    return amount
+        values.append(amount)
+
+    return max(values) if values else None
 
 
 # ======================
 # FINAL AMOUNT PARSER
 # ======================
 def parse_amount(text):
-    # coba numeric dulu
     amount = parse_numeric_amount(text)
 
     if amount:
         return amount
 
-    # fallback ke NLP
     return words_to_number(text)
 
 
@@ -97,14 +96,20 @@ def detect_type(text):
     text = text.lower()
 
     if any(word in text for word in [
-        "beli", "bayar", "jajan", "makan", "minum", "admin", "investasi"
+        "beli", "bayar", "jajan", "makan", "minum", "admin"
     ]):
         return "expense"
 
     elif any(word in text for word in [
-        "gaji", "masuk", "dapat", "uang saku", "menabung"
+        "gaji", "masuk", "dapat", "uang saku"
     ]):
         return "income"
+
+    elif "investasi" in text:
+        return "expense"  # asumsi sederhana
+
+    elif "menabung" in text:
+        return "expense"  # lebih logis daripada income
 
     return "unknown"
 
@@ -131,7 +136,9 @@ def categorize(text):
         return "pahala"
     elif "shopee" in text:
         return "shopee"
-    elif any(word in text for word in ["uang saku", "menabung"]):
+    elif any(word in text for word in ["uang saku"]):
+        return "pemasukan"
+    elif any(word in text for word in ["menabung"]):
         return "tabungan"
     elif "admin" in text:
         return "admin"
@@ -153,6 +160,13 @@ def extract_description(text):
     text = text.replace(".", "")
 
     text = re.sub(r'\d+\s*(k|jt)?', '', text)
+
+    # hapus kata aksi umum
+    text = re.sub(
+        r'\b(beli|bayar|jajan|makan|minum|gaji|dapat|uang|masuk)\b',
+        '',
+        text
+    )
 
     return text.strip()
 

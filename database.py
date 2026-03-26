@@ -25,12 +25,18 @@ def init_db():
     cur.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id SERIAL PRIMARY KEY,
-            amount INTEGER,
-            type TEXT,
+            amount INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
             category TEXT,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+    """)
+
+    # INDEX untuk performa (ini krusial, bukan opsional)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_created_at 
+        ON transactions(created_at)
     """)
 
     conn.commit()
@@ -59,14 +65,14 @@ def save_transaction(amount, tipe, category, description):
     return created_at
 
 # ======================
-# SUMMARY
+# SUMMARY (ALL TIME)
 # ======================
 def get_summary():
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT type, SUM(amount)
+        SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
         GROUP BY type
     """)
@@ -86,7 +92,7 @@ def get_today_summary():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT type, SUM(amount)
+        SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE DATE(created_at) = CURRENT_DATE
         GROUP BY type
@@ -107,10 +113,35 @@ def get_month_summary():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT type, SUM(amount)
+        SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
         GROUP BY type
+    """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# ======================
+# YEAR SUMMARY (INI YANG KAMU BUTUHKAN)
+# ======================
+def get_year_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 
+            EXTRACT(MONTH FROM created_at) AS month,
+            type,
+            COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)
+        GROUP BY month, type
+        ORDER BY month
     """)
 
     data = cur.fetchall()
@@ -128,7 +159,7 @@ def get_category_summary():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT category, SUM(amount)
+        SELECT category, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE type = 'expense'
         GROUP BY category
@@ -150,7 +181,7 @@ def get_today_category_summary():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT category, SUM(amount)
+        SELECT category, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE type = 'expense'
         AND DATE(created_at) = CURRENT_DATE
@@ -173,7 +204,7 @@ def get_total_summary():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT type, SUM(amount)
+        SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
         GROUP BY type
     """)
@@ -258,3 +289,51 @@ def delete_year():
     conn.close()
 
     return deleted
+
+def delete_range(mode):
+    if mode == "today":
+        return delete_today()
+    elif mode == "week":
+        return delete_week()
+    elif mode == "month":
+        return delete_month()
+    elif mode == "year":
+        return delete_year()
+    else:
+        return None
+
+def get_today_transactions():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, amount, type, category, description, created_at
+        FROM transactions
+        WHERE DATE(created_at) = CURRENT_DATE
+        ORDER BY created_at DESC
+    """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+def update_transaction_amount(transaction_id, new_amount):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE transactions
+        SET amount = %s
+        WHERE id = %s
+    """, (new_amount, transaction_id))
+
+    updated = cur.rowcount
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return updated
