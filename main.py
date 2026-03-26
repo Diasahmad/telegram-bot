@@ -550,8 +550,8 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if deleted == 0:
           await update.message.reply_text("ID tidak ditemukan.")
 
-    else:
-        await update.message.reply_text(
+        else:
+          await update.message.reply_text(
             f"Transaksi {trx_id} berhasil dihapus."
         )
 

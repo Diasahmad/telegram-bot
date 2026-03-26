@@ -392,3 +392,21 @@ def get_transactions_by_month(year, month):
 
     return data
 
+def get_transactions_by_year(year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, amount, type, category, description, created_at
+        FROM transactions
+        WHERE EXTRACT(YEAR FROM created_at) = %s
+        ORDER BY created_at DESC
+    """, (year,))
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
