@@ -459,7 +459,7 @@ def get_month_summary_by_year(month, year):
 
     return data
 
-def get_transactions_by_year(year):
+def get_year_monthly_summary(year):
     conn = get_connection()
     cur = conn.cursor()
 
