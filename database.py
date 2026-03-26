@@ -10,7 +10,7 @@ if not DATABASE_URL:
 # CONNECTION
 # ======================
 def get_connection():
-    return psycopg.connect(DATABASE_URL)
+    conn = psycopg.connect(DATABASE_URL)
 
 # ======================
 # INIT TABLE
