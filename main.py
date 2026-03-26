@@ -427,16 +427,15 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
 
-        # ======================
-        # HARI INI
-        # ======================
+    # ======================
+    # HARI INI
+    # ======================
     if not args:
         data = get_today_transactions()
         title = "History Hari Ini"
 
     else:
         arg = args[0]
-
         parts = arg.split("-")
 
         # ======================
@@ -449,6 +448,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 data = get_transactions_by_date(date)
                 title = f"History {arg}"
+
             except:
                 await update.message.reply_text("Format tanggal salah (DD-MM-YYYY)")
                 return
@@ -456,33 +456,46 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ======================
         # MM-YYYY
         # ======================
-        elif len(arg.split("-")) == 2:
-    try:
-        month, year = map(int, arg.split("-"))
+        elif len(parts) == 2:
+            try:
+                month, year = map(int, parts)
 
-        data = get_month_summary_by_year(month, year)
+                data = get_month_summary_by_year(month, year)
 
-        if not data:
-            await update.message.reply_text("Tidak ada data.")
+                if not data:
+                    await update.message.reply_text("Tidak ada data.")
+                    return
+
+                income, expense = 0, 0
+
+                for row in data:
+                    if row[0] == "income":
+                        income = row[1] or 0
+                    elif row[0] == "expense":
+                        expense = row[1] or 0
+
+                nama_bulan = [
+                    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+                ]
+
+                text = f"History {nama_bulan[month-1]} {year}\n\n"
+                text += f"Pemasukan: {format_rupiah(income)}\n"
+                text += f"Pengeluaran: {format_rupiah(expense)}\n"
+                text += f"Saldo: {format_rupiah(income - expense)}\n"
+
+                await update.message.reply_text(text)
+
+            except:
+                await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
+                return
+
+        # ======================
+        # FORMAT TIDAK DIKENALI
+        # ======================
+        else:
+            await update.message.reply_text("Format tidak dikenali.")
             return
-
-        income, expense = 0, 0
-
-        for row in data:
-            if row[0] == "income":
-                income = row[1] or 0
-            elif row[0] == "expense":
-                expense = row[1] or 0
-
-        nama_bulan = [
-            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-        ]
-
-        text = f"History {nama_bulan[month-1]} {year}\n\n"
-        text += f"Pemasukan: {format_rupiah(income)}\n"
-        text += f"Pengeluaran: {format_rupiah(expense)}\n"
-        text += f"Saldo: {format_rupiah(income - expense)}\n"
 
 # ======================
 # OPTIONAL: KATEGORI
