@@ -542,18 +542,6 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"{deleted} data berhasil dihapus ({mode})."
         )
-   elif action == "delete_id":
-        trx_id = data["id"]
-
-        deleted = delete_by_id(trx_id)
-
-        if deleted == 0:
-          await update.message.reply_text("ID tidak ditemukan.")
-
-        else:
-          await update.message.reply_text(
-            f"Transaksi {trx_id} berhasil dihapus."
-        )
 
     elif action == "edit":
         trx_id = data["id"]
@@ -566,6 +554,18 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 f"Transaksi {trx_id} berhasil diupdate menjadi {format_rupiah(new_amount)}"
+            )
+
+    elif action == "delete_id":   # ← HARUS sejajar dengan elif di atas
+        trx_id = data["id"]
+
+        deleted = delete_by_id(trx_id)
+
+        if deleted == 0:
+            await update.message.reply_text("ID tidak ditemukan.")
+        else:
+            await update.message.reply_text(
+                f"Transaksi {trx_id} berhasil dihapus."
             )
 
     clear_pending_action(context)
