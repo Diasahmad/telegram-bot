@@ -1,169 +1,88 @@
 import re
 
 # ======================
-# ANGKA → NLP (KATA KE ANGKA)
-# ======================
-def words_to_number(text):
-    text = text.lower()
-
-    angka = {
-        "nol": 0,
-        "satu": 1, "dua": 2, "tiga": 3, "empat": 4,
-        "lima": 5, "enam": 6, "tujuh": 7, "delapan": 8, "sembilan": 9,
-        "sepuluh": 10, "sebelas": 11
-    }
-
-    puluhan = {
-        "sepuluh": 10,
-        "dua puluh": 20,
-        "tiga puluh": 30,
-        "empat puluh": 40,
-        "lima puluh": 50,
-        "enam puluh": 60,
-        "tujuh puluh": 70,
-        "delapan puluh": 80,
-        "sembilan puluh": 90
-    }
-
-    total = 0
-
-    # puluhan dulu
-    for key, val in puluhan.items():
-        if key in text:
-            total += val
-            text = text.replace(key, "")
-
-    # satuan
-    for word, val in angka.items():
-        if word in text:
-            total += val
-
-    # ribu / juta
-    if "ribu" in text:
-        total *= 1000
-    elif "juta" in text:
-        total *= 1_000_000
-
-    return total if total > 0 else None
-
-
-# ======================
-# ANGKA BIASA (NUMERIC)
-# ======================
-def parse_numeric_amount(text):
-    text = text.lower()
-
-    text = text.replace("ribu", "k")
-    text = text.replace("rb", "k")
-    text = text.replace("juta", "jt")
-
-    # hapus titik (format indo)
-    text = text.replace(".", "")
-
-    match = re.search(r'(\d+)\s*(k|jt)?', text)
-
-    if not match:
-        return None
-
-    amount = int(match.group(1))
-    suffix = match.group(2)
-
-    if suffix == "k":
-        amount *= 1000
-    elif suffix == "jt":
-        amount *= 1_000_000
-
-    return amount
-
-
-# ======================
-# FINAL AMOUNT PARSER
+# AMOUNT (FIX REAL WORLD)
 # ======================
 def parse_amount(text):
-    # coba numeric dulu
-    amount = parse_numeric_amount(text)
+    text = text.lower()
+    text = text.replace(".", "")
+    text = text.replace("ribu", "k").replace("rb", "k")
+    text = text.replace("juta", "jt")
 
-    if amount:
-        return amount
+    matches = re.findall(r'(\d+)\s*(k|jt)?', text)
 
-    # fallback ke NLP
-    return words_to_number(text)
+    if not matches:
+        return None
+
+    values = []
+
+    for num, suffix in matches:
+        val = int(num)
+
+        if suffix == "k":
+            val *= 1000
+        elif suffix == "jt":
+            val *= 1_000_000
+
+        values.append(val)
+
+    return max(values)
 
 
 # ======================
-# DETECT TYPE
+# TYPE
 # ======================
 def detect_type(text):
     text = text.lower()
 
-    if any(word in text for word in [
-        "beli", "bayar", "jajan", "makan", "minum", "admin", "investasi", "shopee"
-    ]):
+    if any(x in text for x in ["beli","bayar","jajan","makan","minum","shopee","sedekah"]):
         return "expense"
 
-    elif any(word in text for word in [
-        "gaji", "masuk", "dapat", "uang saku", "menabung"
-    ]):
+    if any(x in text for x in ["gaji","bonus","dapat","transfer masuk"]):
         return "income"
 
     return "unknown"
 
 
 # ======================
-# CATEGORY
+# CATEGORY (REALISTIC)
 # ======================
 def categorize(text):
     text = text.lower()
 
-    if "makan" in text:
-        return "makan"
-    elif "minum" in text:
-        return "minum"
-    elif "jajan" in text:
-        return "jajan"
-    elif any(word in text for word in ["bensin", "servis"]):
-        return "transport"
-    elif any(word in text for word in ["listrik", "air", "wifi"]):
-        return "tagihan"
-    elif any(word in text for word in ["game", "nonton", "hiburan"]):
-        return "hiburan"
-    elif any(word in text for word in ["infaq", "sedekah"]):
-        return "pahala"
-    elif "shopee" in text:
-        return "shopee"
-    elif any(word in text for word in ["uang saku", "menabung"]):
-        return "tabungan"
-    elif "admin" in text:
-        return "admin"
-    elif "investasi" in text:
-        return "investasi"
+    mapping = {
+        "makan": ["makan","ayam","nasi","mie"],
+        "minum": ["kopi","teh","minum"],
+        "transport": ["bensin","gojek","grab"],
+        "tagihan": ["listrik","air","wifi"],
+        "hiburan": ["game","netflix","nonton"],
+        "belanja": ["shopee","tokopedia"],
+        "infaq": ["sedekah","infaq"],
+    }
+
+    for cat, keys in mapping.items():
+        if any(k in text for k in keys):
+            return cat
 
     return "lainnya"
 
 
 # ======================
-# DESCRIPTION CLEANER
+# DESCRIPTION (SAFE)
 # ======================
 def extract_description(text):
     text = text.lower()
-
-    text = text.replace("ribu", "k")
-    text = text.replace("rb", "k")
-    text = text.replace("juta", "jt")
-    text = text.replace(".", "")
-
-    text = re.sub(r'\d+\s*(k|jt)?', '', text)
-
+    text = re.sub(r'\b\d+\s*(k|jt)?\b', '', text)
     return text.strip()
 
 
 # ======================
-# MAIN PARSER
+# MAIN
 # ======================
 def parse_transaction(text):
     return {
         "amount": parse_amount(text),
         "type": detect_type(text),
-        "description": extract_description(text),
-        "category": categorize(text)
+        "category": categorize(text),
+        "description": extract_description(text)
     }
