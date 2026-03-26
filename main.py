@@ -354,9 +354,9 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
 
-    # ======================
-    # DEFAULT → HARI INI
-    # ======================
+        # ======================
+        # HARI INI
+        # ======================
     if not args:
         data = get_today_transactions()
         title = "History Hari Ini"
@@ -364,53 +364,55 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         arg = args[0]
 
+        parts = arg.split("-")
+
         # ======================
-        # FORMAT: DD-MM-YYYY
+        # DD-MM-YYYY
         # ======================
-        if len(arg.split("-")) == 3:
+        if len(parts) == 3:
             try:
-                day, month, year = map(int, arg.split("-"))
+                day, month, year = map(int, parts)
                 date = f"{year:04d}-{month:02d}-{day:02d}"
 
                 data = get_transactions_by_date(date)
                 title = f"History {arg}"
             except:
-                await update.message.reply_text("Format tanggal salah. Gunakan DD-MM-YYYY")
+                await update.message.reply_text("Format tanggal salah (DD-MM-YYYY)")
                 return
 
         # ======================
-        # FORMAT: MM-YYYY
+        # MM-YYYY
         # ======================
-        elif len(arg.split("-")) == 2:
+        elif len(parts) == 2:
             try:
-                month, year = map(int, arg.split("-"))
+                month, year = map(int, parts)
 
                 data = get_transactions_by_month(year, month)
                 title = f"History {arg}"
             except:
-                await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
+                await update.message.reply_text("Format bulan salah (MM-YYYY)")
+                return
+
+        # ======================
+        # YYYY
+        # ======================
+        elif len(arg) == 4 and arg.isdigit():
+            try:
+                year = int(arg)
+
+                data = get_transactions_by_year(year)
+                title = f"History Tahun {year}"
+            except:
+                await update.message.reply_text("Format tahun salah (YYYY)")
                 return
 
         else:
             await update.message.reply_text("Format tidak dikenali.")
             return
 
-# ======================
-# FORMAT: YYYY
-# ======================
-elif len(arg) == 4 and arg.isdigit():
-    try:
-        year = int(arg)
-
-        data = get_transactions_by_year(year)
-        title = f"History Tahun {year}"
-    except:
-        await update.message.reply_text("Format tahun salah. Gunakan YYYY")
-        return
-
-# ======================
-# OUTPUT
-# ======================
+    # ======================
+    # OUTPUT
+    # ======================
     if not data:
         await update.message.reply_text("Tidak ada data.")
         return
