@@ -58,7 +58,7 @@ def categorize(text):
         "hiburan": ["game","netflix","nonton"],
         "belanja": ["shopee","tokopedia"],
         "infaq": ["sedekah","infaq"],
-	"tabungan" ["uang saku", "menabung"],
+	"tabungan" ["uang saku", "menabung"]
     }
 
     for cat, keys in mapping.items():
