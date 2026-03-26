@@ -38,7 +38,7 @@ def detect_type(text):
     if any(x in text for x in ["beli","bayar","jajan","makan","minum","shopee","sedekah"]):
         return "expense"
 
-    if any(x in text for x in ["gaji","bonus","dapat","transfer masuk"]):
+    if any(x in text for x in ["gaji","bonus","dapat","transfer masuk", "menabung", "uang saku"]):
         return "income"
 
     return "unknown"
@@ -58,6 +58,7 @@ def categorize(text):
         "hiburan": ["game","netflix","nonton"],
         "belanja": ["shopee","tokopedia"],
         "infaq": ["sedekah","infaq"],
+	"tabungan" ["uang saku", "menabung"],
     }
 
     for cat, keys in mapping.items():
@@ -72,8 +73,11 @@ def categorize(text):
 # ======================
 def extract_description(text):
     text = text.lower()
+
     text = re.sub(r'\b\d+\s*(k|jt)?\b', '', text)
-    return text.strip()
+    text = text.replace(".", "").strip()
+
+    return text
 
 
 # ======================

@@ -224,6 +224,29 @@ def get_category_summary(period=None):
     conn.close()
     return result
 
+# ======================
+# YEARLY SUMMARY (BARU)
+# ======================
+def get_yearly_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 
+            DATE_TRUNC('month', created_at) AS month,
+            type,
+            SUM(amount)
+        FROM transactions
+        WHERE DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)
+        GROUP BY month, type
+        ORDER BY month
+    """)
+
+    result = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return result
 
 # ======================
 # PREVIOUS MONTH (INSIGHT)

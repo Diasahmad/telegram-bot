@@ -1,35 +1,23 @@
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from parser import parse_transaction
 from database import (
     save_transaction,
     get_summary,
     get_transactions_by_period,
-    update_transaction,
-    delete_transaction,
     get_category_summary,
-    get_previous_month_summary,
+    get_yearly_summary,
+    delete_transaction,
+    update_transaction,
     init_db
 )
 
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-if not TOKEN:
-    raise ValueError("BOT_TOKEN tidak ditemukan")
-
-# ======================
-# STATE
-# ======================
 user_state = {}
 user_last_list = {}
 
@@ -42,129 +30,21 @@ def format_rupiah(x):
 def adjust_timezone(dt):
     return dt + timedelta(hours=7)
 
-# ======================
-# START
-# ======================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 BOT KEUANGAN\n\n"
-        "📌 Input langsung:\n"
-        "- beli makan 20k\n"
-        "- gaji 3jt\n\n"
-        "⚙️ Command:\n"
-        "/list [today|week|month|year]\n"
-        "/summary [period]\n"
-        "/insight\n"
-        "/edit <id> field=value\n"
-        "/delete <id>\n"
-        "/delete 1-5 (range)\n"
-        "/help"
-    )
+def format_header_date(period):
+    now = datetime.now()
 
-# ======================
-# HELP
-# ======================
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 BANTUAN\n\n"
-        "INPUT:\n"
-        "beli kopi 20k\n\n"
-        "COMMAND:\n"
-        "/list → lihat data\n"
-        "/summary → ringkasan\n"
-        "/insight → analisis\n"
-        "/edit → edit data\n"
-        "/delete → hapus data\n"
-        "/delete 1-5 → hapus range\n\n"
-        "⚠️ Gunakan /list sebelum delete range"
-    )
+    bulan = [
+        "Januari","Februari","Maret","April","Mei","Juni",
+        "Juli","Agustus","September","Oktober","November","Desember"
+    ]
 
-# ======================
-# HANDLE MESSAGE
-# ======================
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.lower()
+    if period == "today":
+        return f"{now.day} {bulan[now.month-1]} {now.year}"
 
-    # ===== CONFIRM SAVE =====
-    if user_id in user_state and user_state[user_id]["action"] == "confirm_save":
-        if text in ["ya", "y"]:
-            data = user_state[user_id]["data"]
+    if period == "month":
+        return f"{bulan[now.month-1]} {now.year}"
 
-            tid, _ = save_transaction(
-                data["amount"],
-                data["type"],
-                data["category"],
-                data["description"]
-            )
-
-            await update.message.reply_text(
-                f"✅ Disimpan\nID: {tid}\n"
-                f"{data['category']} - Rp {format_rupiah(data['amount'])}"
-            )
-
-        else:
-            await update.message.reply_text("❌ Dibatalkan")
-
-        del user_state[user_id]
-        return
-
-    # ===== CONFIRM DELETE =====
-    if user_id in user_state:
-
-        # SINGLE
-        if user_state[user_id]["action"] == "confirm_delete":
-            if text in ["ya", "y"]:
-                tid = user_state[user_id]["id"]
-                delete_transaction(tid)
-                await update.message.reply_text(f"🗑️ ID {tid} dihapus")
-            else:
-                await update.message.reply_text("❌ Batal")
-
-            del user_state[user_id]
-            return
-
-        # RANGE
-        if user_state[user_id]["action"] == "confirm_delete_range":
-            if text in ["ya", "y"]:
-                ids = user_state[user_id]["ids"]
-
-                for tid in ids:
-                    delete_transaction(tid)
-
-                await update.message.reply_text(
-                    f"🗑️ {len(ids)} data dihapus"
-                )
-            else:
-                await update.message.reply_text("❌ Batal")
-
-            del user_state[user_id]
-            return
-
-    # ===== PARSE =====
-    data = parse_transaction(text)
-
-    if not data["amount"]:
-        await update.message.reply_text("❌ Jumlah tidak terbaca")
-        return
-
-    if data["type"] == "unknown":
-        await update.message.reply_text("❌ Tipe tidak jelas")
-        return
-
-    user_state[user_id] = {
-        "action": "confirm_save",
-        "data": data
-    }
-
-    await update.message.reply_text(
-        f"Konfirmasi:\n\n"
-        f"Tipe: {data['type']}\n"
-        f"Jumlah: Rp {format_rupiah(data['amount'])}\n"
-        f"Kategori: {data['category']}\n"
-        f"Deskripsi: {data['description']}\n\n"
-        f"Ketik 'ya' atau 'batal'"
-    )
+    return ""
 
 # ======================
 # LIST
@@ -172,6 +52,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     period = context.args[0] if context.args else "today"
+
+    # ===== YEAR =====
+    if period == "year":
+        data = get_yearly_summary()
+
+        if not data:
+            await update.message.reply_text("Tidak ada data tahun ini.")
+            return
+
+        text = "📊 DATA TAHUN INI\n\n"
+
+        bulan_map = {}
+
+        for month, tipe, amount in data:
+            m = month.month
+            if m not in bulan_map:
+                bulan_map[m] = {"income":0,"expense":0}
+
+            bulan_map[m][tipe] = amount
+
+        nama_bulan = [
+            "Januari","Februari","Maret","April","Mei","Juni",
+            "Juli","Agustus","September","Oktober","November","Desember"
+        ]
+
+        for m in sorted(bulan_map.keys()):
+            inc = bulan_map[m]["income"]
+            exp = bulan_map[m]["expense"]
+
+            text += (
+                f"{nama_bulan[m-1]}\n"
+                f"Pemasukan: Rp {format_rupiah(inc)}\n"
+                f"Pengeluaran: Rp {format_rupiah(exp)}\n"
+                f"Saldo: Rp {format_rupiah(inc-exp)}\n\n"
+            )
+
+        await update.message.reply_text(text)
+        return
 
     data = get_transactions_by_period(period)
 
@@ -181,170 +99,112 @@ async def list_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_last_list[user_id] = data
 
-    text = f"📋 Data ({period})\n\n"
+    header = format_header_date(period)
+    text = f"📋 Data ({period})\n{header}\n\n"
 
+    # ===== MONTH (AGGREGATE) =====
+    if period == "month":
+        kategori_map = {}
+
+        for row in data:
+            _, amount, _, category, _, _ = row
+            kategori_map[category] = kategori_map.get(category, 0) + amount
+
+        for i, (cat, total) in enumerate(kategori_map.items(), start=1):
+            text += f"{i}. {cat.upper()} - Rp {format_rupiah(total)}\n"
+
+        await update.message.reply_text(text)
+        return
+
+    # ===== TODAY =====
     for i, row in enumerate(data, start=1):
-        id_, amount, tipe, category, desc, _ = row
+        id_, amount, tipe, category, desc, created = row
+        created = adjust_timezone(created)
+
+        jam = created.strftime("%H:%M")
 
         text += (
             f"{i}. [{id_}] {category.upper()}\n"
             f"   Rp {format_rupiah(amount)}\n"
-            f"   {desc}\n\n"
+            f"   {desc}\n"
+            f"   🕒 {jam}\n\n"
         )
 
     await update.message.reply_text(text)
 
 # ======================
-# SUMMARY
-# ======================
-async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    period = context.args[0] if context.args else None
-    data = get_summary(period)
-
-    income, expense = 0, 0
-    for t, v in data:
-        if t == "income":
-            income = v or 0
-        elif t == "expense":
-            expense = v or 0
-
-    await update.message.reply_text(
-        f"💰 Summary\n\n"
-        f"Pemasukan: Rp {format_rupiah(income)}\n"
-        f"Pengeluaran: Rp {format_rupiah(expense)}\n"
-        f"Saldo: Rp {format_rupiah(income-expense)}"
-    )
-
-# ======================
-# INSIGHT
-# ======================
-async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    current = get_summary("month")
-    prev = get_previous_month_summary()
-
-    income, expense = 0, 0
-    for t, v in current:
-        if t == "income": income = v or 0
-        if t == "expense": expense = v or 0
-
-    prev_expense = 0
-    for t, v in prev:
-        if t == "expense": prev_expense = v or 0
-
-    categories = get_category_summary("month")
-
-    text = "📊 INSIGHT\n\n"
-
-    if expense > income:
-        text += "❌ Defisit\n"
-    else:
-        text += "✅ Surplus\n"
-
-    if categories:
-        cat, val = categories[0]
-        total = sum(x[1] for x in categories if x[1])
-        persen = (val / total) * 100 if total else 0
-
-        text += f"\nTop: {cat} ({persen:.1f}%)"
-
-        if persen > 50:
-            text += " ⚠️ Dominan"
-
-    if prev_expense:
-        change = ((expense - prev_expense) / prev_expense) * 100
-        text += f"\nTrend: {change:.1f}%"
-
-    await update.message.reply_text(text)
-
-# ======================
-# DELETE
+# DELETE (SUPPORT PERIOD)
 # ======================
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
     if not context.args:
-        await update.message.reply_text("Gunakan /delete <id> atau <range>")
+        await update.message.reply_text("Gunakan /delete <id> atau range")
         return
 
     arg = context.args[0]
 
-    # RANGE
     if "-" in arg:
         if uid not in user_last_list:
             await update.message.reply_text("Gunakan /list dulu")
             return
 
-        try:
-            start, end = map(int, arg.split("-"))
-            data = user_last_list[uid]
+        start, end = map(int, arg.split("-"))
+        data = user_last_list[uid]
 
-            if start < 1 or end > len(data) or start > end:
-                await update.message.reply_text("Range tidak valid")
-                return
+        selected = data[start-1:end]
+        ids = [row[0] for row in selected]
 
-            selected = data[start-1:end]
-            ids = [row[0] for row in selected]
+        user_state[uid] = {"action":"confirm_delete_range","ids":ids}
 
-            preview = "\n".join([f"{i+start}. ID {row[0]}" for i, row in enumerate(selected)])
-
-            user_state[uid] = {
-                "action": "confirm_delete_range",
-                "ids": ids
-            }
-
-            await update.message.reply_text(
-                f"⚠️ Hapus {len(ids)} data:\n\n{preview}\n\n"
-                f"Ketik 'ya' atau 'batal'"
-            )
-
-        except:
-            await update.message.reply_text("Format salah. /delete 1-5")
-
-        return
-
-    # SINGLE
-    try:
-        tid = int(arg)
-
-        user_state[uid] = {
-            "action": "confirm_delete",
-            "id": tid
-        }
+        preview = "\n".join([f"ID {x}" for x in ids])
 
         await update.message.reply_text(
-            f"Yakin hapus ID {tid}? ketik 'ya' atau 'batal'"
+            f"Hapus:\n{preview}\n\nKetik 'ya' atau 'batal'"
         )
-
-    except:
-        await update.message.reply_text("ID tidak valid")
-
-# ======================
-# EDIT
-# ======================
-async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        tid = int(context.args[0])
-    except:
-        await update.message.reply_text("ID tidak valid")
         return
 
-    updates = {}
+    tid = int(arg)
+    user_state[uid] = {"action":"confirm_delete","id":tid}
 
-    for arg in context.args[1:]:
-        if "=" in arg:
-            k, v = arg.split("=")
-            updates[k] = v
+    await update.message.reply_text("Yakin? ketik 'ya' atau 'batal'")
 
-    update_transaction(
-        tid,
-        amount=int(updates["amount"]) if "amount" in updates else None,
-        tipe=updates.get("type"),
-        category=updates.get("category"),
-        description=updates.get("description"),
-    )
+# ======================
+# HANDLE MESSAGE
+# ======================
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    text = update.message.text.lower()
 
-    await update.message.reply_text("✅ Updated")
+    # CONFIRM DELETE
+    if uid in user_state:
+        state = user_state[uid]
+
+        if state["action"] == "confirm_delete":
+            if text == "ya":
+                delete_transaction(state["id"])
+                await update.message.reply_text("Dihapus")
+            del user_state[uid]
+            return
+
+        if state["action"] == "confirm_delete_range":
+            if text == "ya":
+                for i in state["ids"]:
+                    delete_transaction(i)
+                await update.message.reply_text("Range dihapus")
+            del user_state[uid]
+            return
+
+    # PARSE
+    data = parse_transaction(text)
+
+    if not data["amount"]:
+        await update.message.reply_text("Jumlah tidak terbaca")
+        return
+
+    user_state[uid] = {"action":"confirm_save","data":data}
+
+    await update.message.reply_text(f"Konfirmasi:\n{data}\nketik ya/batal")
 
 # ======================
 # MAIN
@@ -354,17 +214,10 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("list", list_data))
-    app.add_handler(CommandHandler("summary", summary))
-    app.add_handler(CommandHandler("insight", insight))
     app.add_handler(CommandHandler("delete", delete))
-    app.add_handler(CommandHandler("edit", edit))
-
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot running...")
     app.run_polling()
 
 if __name__ == "__main__":
