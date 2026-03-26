@@ -1,10 +1,11 @@
 import re
 
 # ======================
-# AMOUNT (FIX REAL WORLD)
+# AMOUNT PARSER (STABIL)
 # ======================
 def parse_amount(text):
     text = text.lower()
+
     text = text.replace(".", "")
     text = text.replace("ribu", "k").replace("rb", "k")
     text = text.replace("juta", "jt")
@@ -30,35 +31,44 @@ def parse_amount(text):
 
 
 # ======================
-# TYPE
+# TYPE DETECTION
 # ======================
 def detect_type(text):
     text = text.lower()
 
-    if any(x in text for x in ["beli","bayar","jajan","makan","minum","shopee","sedekah"]):
+    expense_keywords = [
+        "beli", "bayar", "jajan", "makan", "minum",
+        "shopee", "sedekah", "infaq", "bensin"
+    ]
+
+    income_keywords = [
+        "menabung", "bonus", "dapat", "transfer masuk", "uang saku"
+    ]
+
+    if any(word in text for word in expense_keywords):
         return "expense"
 
-    if any(x in text for x in ["gaji","bonus","dapat","transfer masuk", "menabung", "uang saku"]):
+    if any(word in text for word in income_keywords):
         return "income"
 
     return "unknown"
 
 
 # ======================
-# CATEGORY (REALISTIC)
+# CATEGORY (LEBIH REAL)
 # ======================
 def categorize(text):
     text = text.lower()
 
     mapping = {
-        "makan": ["makan","ayam","nasi","mie"],
-        "minum": ["kopi","teh","minum"],
-        "transport": ["bensin","gojek","grab"],
-        "tagihan": ["listrik","air","wifi"],
-        "hiburan": ["game","netflix","nonton"],
-        "belanja": ["shopee","tokopedia"],
-        "infaq": ["sedekah","infaq"],
-	"tabungan" ["uang saku", "menabung"]
+        "makan": ["makan", "ayam", "nasi", "mie"],
+        "minum": ["kopi", "teh", "minum"],
+        "transport": ["bensin", "gojek", "grab"],
+        "tagihan": ["listrik", "air", "wifi"],
+        "hiburan": ["game", "netflix", "nonton"],
+        "belanja": ["shopee", "tokopedia"],
+        "infaq": ["sedekah", "infaq"],
+        "tabungan": ["menabung", "uang saku"]
     }
 
     for cat, keys in mapping.items():
@@ -69,7 +79,7 @@ def categorize(text):
 
 
 # ======================
-# DESCRIPTION (SAFE)
+# DESCRIPTION (BERSIH)
 # ======================
 def extract_description(text):
     text = text.lower()
@@ -81,7 +91,7 @@ def extract_description(text):
 
 
 # ======================
-# MAIN
+# MAIN PARSER
 # ======================
 def parse_transaction(text):
     return {
