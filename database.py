@@ -331,3 +331,69 @@ def update_transaction_amount(transaction_id, new_amount):
     conn.close()
 
     return updated
+
+# ======================
+# RANK BY DATE
+# ======================
+def get_rank_by_date(date):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        AND DATE({wib()}) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (date,))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+
+# ======================
+# RANK BY MONTH
+# ======================
+def get_rank_by_month(month, year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        AND EXTRACT(MONTH FROM {wib()}) = %s
+        AND EXTRACT(YEAR FROM {wib()}) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (int(month), int(year)))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+
+# ======================
+# RANK BY YEAR
+# ======================
+def get_rank_by_year(year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        AND EXTRACT(YEAR FROM {wib()}) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (year,))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
