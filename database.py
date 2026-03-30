@@ -481,3 +481,22 @@ def get_year_monthly_summary(year):
 
     return data
 
+def get_month_category_summary(month, year):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    query = """
+    SELECT category, SUM(amount)
+    FROM transactions
+    WHERE strftime('%m', created_at) = ?
+      AND strftime('%Y', created_at) = ?
+      AND type = 'expense'
+    GROUP BY category
+    ORDER BY SUM(amount) DESC
+    """
+
+    cursor.execute(query, (month, str(year)))
+    data = cursor.fetchall()
+
+    conn.close()
+    return data
