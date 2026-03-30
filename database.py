@@ -119,7 +119,8 @@ def get_today_transactions():
     cur.execute(f"""
         SELECT id, amount, type, category, description, created_at
         FROM transactions
-        WHERE DATE({wib()}) = DATE({now_wib()})
+        WHERE {wib()} >= DATE_TRUNC('day', {now_wib()})
+        AND {wib()} < DATE_TRUNC('day', {now_wib()}) + INTERVAL '1 day'
         ORDER BY created_at DESC
     """)
 
@@ -257,12 +258,11 @@ def get_today_category_summary():
     cur = conn.cursor()
 
     cur.execute(f"""
-        SELECT category, COALESCE(SUM(amount), 0)
+        SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE type = 'expense'
-        AND DATE({wib()}) = DATE({now_wib()})
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
+        WHERE {wib()} >= DATE_TRUNC('day', {now_wib()})
+        AND {wib()} < DATE_TRUNC('day', {now_wib()}) + INTERVAL '1 day'
+        GROUP BY type
     """)
 
     data = cur.fetchall()
