@@ -29,11 +29,10 @@ def init_db():
             type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
             category TEXT,
             description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ DEFAULT NOW()
         )
     """)
 
-    # INDEX untuk performa (ini krusial, bukan opsional)
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_created_at 
         ON transactions(created_at)
@@ -44,7 +43,7 @@ def init_db():
     conn.close()
 
 # ======================
-# SAVE DATA
+# SAVE
 # ======================
 def save_transaction(amount, tipe, category, description):
     conn = get_connection()
@@ -65,7 +64,13 @@ def save_transaction(amount, tipe, category, description):
     return created_at
 
 # ======================
-# SUMMARY (ALL TIME)
+# HELPER (WIB TIME)
+# ======================
+def wib(expr="created_at"):
+    return f"{expr} AT TIME ZONE 'Asia/Jakarta'"
+
+# ======================
+# SUMMARY ALL
 # ======================
 def get_summary():
     conn = get_connection()
@@ -78,10 +83,8 @@ def get_summary():
     """)
 
     data = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return data
 
 # ======================
@@ -91,18 +94,16 @@ def get_today_summary():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE DATE(created_at) = CURRENT_DATE
+        WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
         GROUP BY type
     """)
 
     data = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return data
 
 # ======================
@@ -112,298 +113,207 @@ def get_month_summary():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
+        WHERE DATE_TRUNC('month', {wib()}) =
+              DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Jakarta')
         GROUP BY type
     """)
 
     data = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return data
 
 # ======================
-# YEAR SUMMARY (INI YANG KAMU BUTUHKAN)
+# YEAR SUMMARY
 # ======================
 def get_year_summary():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT 
-            EXTRACT(MONTH FROM created_at) AS month,
+            EXTRACT(MONTH FROM {wib()}) AS month,
             type,
             COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)
+        WHERE DATE_TRUNC('year', {wib()}) =
+              DATE_TRUNC('year', NOW() AT TIME ZONE 'Asia/Jakarta')
         GROUP BY month, type
         ORDER BY month
     """)
 
     data = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return data
 
 # ======================
-# CATEGORY SUMMARY
+# TODAY TRANSACTIONS
 # ======================
-def get_category_summary():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT category, COALESCE(SUM(amount), 0)
-        FROM transactions
-        WHERE type = 'expense'
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """)
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# ======================
-# TODAY CATEGORY RANK
-# ======================
-def get_today_category_summary():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT category, COALESCE(SUM(amount), 0)
-        FROM transactions
-        WHERE type = 'expense'
-        AND DATE(created_at) = CURRENT_DATE
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """)
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# RANK HARI
-# ======================
-def get_rank_by_date(date):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT category, SUM(amount)
-        FROM transactions
-        WHERE type = 'expense'
-        AND DATE(created_at) = %s
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """, (date,))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# RANK BULAN
-# ======================
-def get_rank_by_month(month, year):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT category, SUM(amount)
-        FROM transactions
-        WHERE type = 'expense'
-        AND EXTRACT(MONTH FROM created_at) = %s
-        AND EXTRACT(YEAR FROM created_at) = %s
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """, (month, year))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# RANK TAHUN
-# ======================
-def get_rank_by_year(year):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT category, SUM(amount)
-        FROM transactions
-        WHERE type = 'expense'
-        AND EXTRACT(YEAR FROM created_at) = %s
-        GROUP BY category
-        ORDER BY SUM(amount) DESC
-    """, (year,))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# ======================
-# TOTAL SUMMARY
-# ======================
-def get_total_summary():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT type, COALESCE(SUM(amount), 0)
-        FROM transactions
-        GROUP BY type
-    """)
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-# ======================
-# DELETE FUNCTIONS
-# ======================
-def delete_today():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        DELETE FROM transactions
-        WHERE DATE(created_at) = CURRENT_DATE
-    """)
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return deleted
-
-
-def delete_week():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        DELETE FROM transactions
-        WHERE DATE_TRUNC('week', created_at) = DATE_TRUNC('week', CURRENT_DATE)
-    """)
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return deleted
-
-
-def delete_month():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        DELETE FROM transactions
-        WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)
-    """)
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return deleted
-
-
-def delete_year():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        DELETE FROM transactions
-        WHERE DATE_TRUNC('year', created_at) = DATE_TRUNC('year', CURRENT_DATE)
-    """)
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return deleted
-
-def delete_range(mode):
-    if mode == "today":
-        return delete_today()
-    elif mode == "week":
-        return delete_week()
-    elif mode == "month":
-        return delete_month()
-    elif mode == "year":
-        return delete_year()
-    else:
-        return None
-
-def delete_by_id(transaction_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        DELETE FROM transactions
-        WHERE id = %s
-    """, (transaction_id,))
-
-    deleted = cur.rowcount
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return deleted
-
 def get_today_transactions():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT id, amount, type, category, description, created_at
         FROM transactions
-        WHERE DATE(created_at) = CURRENT_DATE
+        WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
         ORDER BY created_at DESC
     """)
 
     data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
 
+# ======================
+# BY DATE
+# ======================
+def get_transactions_by_date(date):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT id, amount, type, category, description, created_at
+        FROM transactions
+        WHERE DATE({wib()}) = %s
+        ORDER BY created_at DESC
+    """, (date,))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+# ======================
+# MONTH SUMMARY BY YEAR
+# ======================
+def get_month_summary_by_year(month, year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT type, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE EXTRACT(MONTH FROM {wib()}) = %s
+        AND EXTRACT(YEAR FROM {wib()}) = %s
+        GROUP BY type
+    """, (int(month), int(year)))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+# ======================
+# YEAR MONTHLY
+# ======================
+def get_year_monthly_summary(year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT 
+            EXTRACT(MONTH FROM {wib()}) AS month,
+            type,
+            COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE EXTRACT(YEAR FROM {wib()}) = %s
+        GROUP BY month, type
+        ORDER BY month
+    """, (year,))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+# ======================
+# CATEGORY MONTH
+# ======================
+def get_month_category_summary(month, year):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        AND EXTRACT(MONTH FROM {wib()}) = %s
+        AND EXTRACT(YEAR FROM {wib()}) = %s
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """, (int(month), int(year)))
+
+    data = cur.fetchall()
+    cur.close()
+    conn.close()
+    return data
+
+# ======================
+# DELETE RANGE
+# ======================
+def delete_range(mode):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if mode == "today":
+        query = f"DELETE FROM transactions WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')"
+
+    elif mode == "week":
+        query = f"""
+        DELETE FROM transactions
+        WHERE DATE_TRUNC('week', {wib()}) =
+              DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Jakarta')
+        """
+
+    elif mode == "month":
+        query = f"""
+        DELETE FROM transactions
+        WHERE DATE_TRUNC('month', {wib()}) =
+              DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Jakarta')
+        """
+
+    elif mode == "year":
+        query = f"""
+        DELETE FROM transactions
+        WHERE DATE_TRUNC('year', {wib()}) =
+              DATE_TRUNC('year', NOW() AT TIME ZONE 'Asia/Jakarta')
+        """
+    else:
+        return 0
+
+    cur.execute(query)
+    deleted = cur.rowcount
+
+    conn.commit()
     cur.close()
     conn.close()
 
-    return data
+    return deleted
 
+# ======================
+# DELETE BY ID
+# ======================
+def delete_by_id(transaction_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
+    deleted = cur.rowcount
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return deleted
+
+# ======================
+# UPDATE
+# ======================
 def update_transaction_amount(transaction_id, new_amount):
     conn = get_connection()
     cur = conn.cursor()
@@ -421,82 +331,3 @@ def update_transaction_amount(transaction_id, new_amount):
     conn.close()
 
     return updated
-
-def get_transactions_by_date(date):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT id, amount, type, category, description, created_at
-        FROM transactions
-        WHERE DATE(created_at) = %s
-        ORDER BY created_at DESC
-    """, (date,))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-def get_month_summary_by_year(month, year):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT type, SUM(amount)
-        FROM transactions
-        WHERE EXTRACT(MONTH FROM created_at) = %s
-        AND EXTRACT(YEAR FROM created_at) = %s
-        GROUP BY type
-    """, (month, year))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-def get_year_monthly_summary(year):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT 
-            EXTRACT(MONTH FROM created_at) AS month,
-            type,
-            SUM(amount)
-        FROM transactions
-        WHERE EXTRACT(YEAR FROM created_at) = %s
-        GROUP BY month, type
-        ORDER BY month
-    """, (year,))
-
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return data
-
-def get_month_category_summary(month, year):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    query = """
-    SELECT category, SUM(amount)
-    FROM transactions
-    WHERE strftime('%m', created_at) = ?
-      AND strftime('%Y', created_at) = ?
-      AND type = 'expense'
-    GROUP BY category
-    ORDER BY SUM(amount) DESC
-    """
-
-    cursor.execute(query, (month, str(year)))
-    data = cursor.fetchall()
-
-    conn.close()
-    return data
