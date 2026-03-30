@@ -141,6 +141,8 @@ def categorize(text):
         return "admin"
     elif "investasi" in text:
         return "investasi"
+    elif any(word in text for word in ["bayar", "beli"]):
+        return "pengeluaran"
 
     return "lainnya"
 

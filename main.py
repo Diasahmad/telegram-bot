@@ -420,8 +420,9 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text(text)
 
+import re
 # ======================
-# HANDLE /HISTORY
+# HANDLE /HISTORY (FIXED VERSION)
 # ======================
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -455,18 +456,21 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # ARGUMENT PARSING
+    # ARGUMENT
     # ======================
     arg = args[0]
-    parts = arg.split("-")
+
+    print(f"[DEBUG] HISTORY ARG: {arg}")
 
     # ======================
-    # DD-MM-YYYY (DETAIL)
+    # FORMAT DD-MM-YYYY
     # ======================
-    if len(parts) == 3:
+    if re.match(r"^\d{2}-\d{2}-\d{4}$", arg):
         try:
-            day, month, year = map(int, parts)
+            day, month, year = map(int, arg.split("-"))
             date = f"{year:04d}-{month:02d}-{day:02d}"
+
+            print(f"[DEBUG] DATE QUERY: {date}")
 
             data = get_transactions_by_date(date)
 
@@ -491,18 +495,29 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(text)
 
-        except:
+        except Exception as e:
+            print(f"[ERROR DD-MM-YYYY] {e}")
             await update.message.reply_text("Format tanggal salah (DD-MM-YYYY)")
         return
 
     # ======================
-    # MM-YYYY (SUMMARY)
+    # FORMAT MM-YYYY (FIX UTAMA)
     # ======================
-    elif len(parts) == 2:
+    elif re.match(r"^\d{2}-\d{4}$", arg):
         try:
-            month, year = map(int, parts)
+            month, year = map(int, arg.split("-"))
 
-            data = get_month_summary_by_year(month, year)
+            # VALIDASI BULAN
+            if month < 1 or month > 12:
+                await update.message.reply_text("Bulan harus 01-12.")
+                return
+
+            # NORMALISASI (KRUSIAL)
+            month_str = f"{month:02d}"
+
+            print(f"[DEBUG] MONTH: {month_str}, YEAR: {year}")
+
+            data = get_month_summary_by_year(month_str, year)
 
             if not data:
                 await update.message.reply_text("Tidak ada data.")
@@ -526,33 +541,39 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"Pengeluaran: {format_rupiah(expense)}\n"
             text += f"Saldo: {format_rupiah(income - expense)}\n"
 
-            # ===== KATEGORI =====
-            cat_data = get_month_category_summary(month, year)
+            # OPTIONAL: kategori (kalau ada fungsi)
+            try:
+                cat_data = get_month_category_summary(month_str, year)
 
-            if cat_data:
-                text += "\nTop Pengeluaran:\n"
+                if cat_data:
+                    text += "\nTop Pengeluaran:\n"
 
-                total_exp = sum(row[1] for row in cat_data if row[1])
+                    total_exp = sum(row[1] for row in cat_data if row[1])
 
-                for i, row in enumerate(cat_data[:5], start=1):
-                    kategori = row[0]
-                    total = row[1] or 0
-                    persen = (total / total_exp) * 100 if total_exp else 0
+                    for i, row in enumerate(cat_data[:5], start=1):
+                        kategori = row[0]
+                        total = row[1] or 0
+                        persen = (total / total_exp) * 100 if total_exp else 0
 
-                    text += f"{i}. {kategori} - {format_rupiah(total)} ({persen:.1f}%)\n"
+                        text += f"{i}. {kategori} - {format_rupiah(total)} ({persen:.1f}%)\n"
+            except Exception as e:
+                print(f"[WARNING] Category summary error: {e}")
 
             await update.message.reply_text(text)
 
-        except:
+        except Exception as e:
+            print(f"[ERROR MM-YYYY] {e}")
             await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
         return
 
     # ======================
-    # YYYY (SUMMARY)
+    # FORMAT YYYY
     # ======================
-    elif len(arg) == 4 and arg.isdigit():
+    elif re.match(r"^\d{4}$", arg):
         try:
             year = int(arg)
+
+            print(f"[DEBUG] YEAR: {year}")
 
             data = get_year_monthly_summary(year)
 
@@ -604,7 +625,8 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(text)
 
-        except:
+        except Exception as e:
+            print(f"[ERROR YYYY] {e}")
             await update.message.reply_text("Format tahun salah. Gunakan YYYY")
         return
 
@@ -612,7 +634,9 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # FORMAT SALAH
     # ======================
     else:
-        await update.message.reply_text("Format tidak dikenali.")
+        await update.message.reply_text(
+            "Format tidak dikenali.\nGunakan:\nDD-MM-YYYY | MM-YYYY | YYYY"
+        )
 
 # ======================
 # HANDLE /EDIT
