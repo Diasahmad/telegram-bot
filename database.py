@@ -182,9 +182,10 @@ def get_transactions_by_date(date):
     cur.execute(f"""
         SELECT id, amount, type, category, description, created_at
         FROM transactions
-        WHERE DATE({wib()}) = %s
+        WHERE {wib()} >= %s
+        AND {wib()} < (%s::date + INTERVAL '1 day')
         ORDER BY created_at DESC
-    """, (date,))
+    """, (date, date))
 
     data = cur.fetchall()
     cur.close()
