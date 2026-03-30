@@ -58,8 +58,6 @@ def format_tanggal(dt):
     ]
     return f"{dt.day} {bulan[dt.month - 1]} {dt.year}, {dt.hour:02d}:{dt.minute:02d}"
 
-def adjust_timezone(dt):
-    return dt + timedelta(hours=7)
 
 # ======================
 # HELPER (INI YANG NGURANGIN DUPLIKASI)
@@ -172,7 +170,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     print(f"Pesan masuk: {text}")
 
-    # Parsing
     try:
         data = parse_transaction(text)
     except Exception as e:
@@ -188,7 +185,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Tidak jelas pemasukan atau pengeluaran.")
         return
 
-    # Simpan ke DB
     try:
         created_at = save_transaction(
             data["amount"],
@@ -201,10 +197,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Gagal menyimpan data.")
         return
 
-    # Format output
     type_text = "Pemasukan" if data["type"] == "income" else "Pengeluaran"
 
-    created_at = adjust_timezone(created_at)
+    # ❗ TANPA timezone manual
     tanggal = format_tanggal(created_at)
 
     await update.message.reply_text(
@@ -216,7 +211,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Deskripsi: {data['description']}"
     )
 
-    # Alert
     alert = check_alert()
     if alert:
         await update.message.reply_text(alert)
@@ -429,7 +423,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
 
     # ======================
-    # HARI INI (DETAIL)
+    # HARI INI
     # ======================
     if not args:
         data = get_today_transactions()
@@ -443,7 +437,38 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, row in enumerate(data, start=1):
             trx_id, amount, tipe, kategori, desc, created_at = row
 
-            created_at = adjust_timezone(created_at)
+            tipe_text = "+" if tipe == "income" else "-"
+
+            text += (
+                f"{i}. (ID: {trx_id})\n"
+                f"{tipe_text} {format_rupiah(amount)} | {kategori}\n"
+                f"{desc}\n"
+                f"{format_tanggal(created_at)}\n\n"
+            )
+
+        await update.message.reply_text(text)
+        return
+
+    arg = args[0]
+
+    # ======================
+    # DD-MM-YYYY
+    # ======================
+    if re.match(r"^\d{2}-\d{2}-\d{4}$", arg):
+        day, month, year = map(int, arg.split("-"))
+        date = f"{year:04d}-{month:02d}-{day:02d}"
+
+        data = get_transactions_by_date(date)
+
+        if not data:
+            await update.message.reply_text("Tidak ada data.")
+            return
+
+        text = f"History {arg}:\n\n"
+
+        for i, row in enumerate(data, start=1):
+            trx_id, amount, tipe, kategori, desc, created_at = row
+
             tipe_text = "+" if tipe == "income" else "-"
 
             text += (
@@ -457,179 +482,53 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # ARGUMENT
-    # ======================
-    arg = args[0]
-
-    print(f"[DEBUG] HISTORY ARG: {arg}")
-
-    # ======================
-    # FORMAT DD-MM-YYYY
-    # ======================
-    if re.match(r"^\d{2}-\d{2}-\d{4}$", arg):
-        try:
-            day, month, year = map(int, arg.split("-"))
-            date = f"{year:04d}-{month:02d}-{day:02d}"
-
-            print(f"[DEBUG] DATE QUERY: {date}")
-
-            data = get_transactions_by_date(date)
-
-            if not data:
-                await update.message.reply_text("Tidak ada data.")
-                return
-
-            text = f"History {arg}:\n\n"
-
-            for i, row in enumerate(data, start=1):
-                trx_id, amount, tipe, kategori, desc, created_at = row
-
-                created_at = adjust_timezone(created_at)
-                tipe_text = "+" if tipe == "income" else "-"
-
-                text += (
-                    f"{i}. (ID: {trx_id})\n"
-                    f"{tipe_text} {format_rupiah(amount)} | {kategori}\n"
-                    f"{desc}\n"
-                    f"{format_tanggal(created_at)}\n\n"
-                )
-
-            await update.message.reply_text(text)
-
-        except Exception as e:
-            print(f"[ERROR DD-MM-YYYY] {e}")
-            await update.message.reply_text("Format tanggal salah (DD-MM-YYYY)")
-        return
-
-    # ======================
-    # FORMAT MM-YYYY (FIX UTAMA)
+    # MM-YYYY
     # ======================
     elif re.match(r"^\d{2}-\d{4}$", arg):
-        try:
-            month, year = map(int, arg.split("-"))
+        month, year = map(int, arg.split("-"))
 
-            # VALIDASI BULAN
-            if month < 1 or month > 12:
-                await update.message.reply_text("Bulan harus 01-12.")
-                return
+        data = get_month_summary_by_year(month, year)
 
-            # NORMALISASI (KRUSIAL)
-            month_str = f"{month:02d}"
+        if not data:
+            await update.message.reply_text("Tidak ada data.")
+            return
 
-            print(f"[DEBUG] MONTH: {month_str}, YEAR: {year}")
+        income, expense = extract_income_expense(data)
 
-            data = get_month_summary_by_year(month_str, year)
+        nama_bulan = [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ]
 
-            if not data:
-                await update.message.reply_text("Tidak ada data.")
-                return
+        text = f"History {nama_bulan[month-1]} {year}\n\n"
+        text += f"Pemasukan: {format_rupiah(income)}\n"
+        text += f"Pengeluaran: {format_rupiah(expense)}\n"
+        text += f"Saldo: {format_rupiah(income - expense)}\n"
 
-            income, expense = 0, 0
-
-            for row in data:
-                if row[0] == "income":
-                    income = row[1] or 0
-                elif row[0] == "expense":
-                    expense = row[1] or 0
-
-            nama_bulan = [
-                "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-                "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-            ]
-
-            text = f"History {nama_bulan[month-1]} {year}\n\n"
-            text += f"Pemasukan: {format_rupiah(income)}\n"
-            text += f"Pengeluaran: {format_rupiah(expense)}\n"
-            text += f"Saldo: {format_rupiah(income - expense)}\n"
-
-            # OPTIONAL: kategori (kalau ada fungsi)
-            try:
-                cat_data = get_month_category_summary(month_str, year)
-
-                if cat_data:
-                    text += "\nTop Pengeluaran:\n"
-
-                    total_exp = sum(row[1] for row in cat_data if row[1])
-
-                    for i, row in enumerate(cat_data[:5], start=1):
-                        kategori = row[0]
-                        total = row[1] or 0
-                        persen = (total / total_exp) * 100 if total_exp else 0
-
-                        text += f"{i}. {kategori} - {format_rupiah(total)} ({persen:.1f}%)\n"
-            except Exception as e:
-                print(f"[WARNING] Category summary error: {e}")
-
-            await update.message.reply_text(text)
-
-        except Exception as e:
-            print(f"[ERROR MM-YYYY] {e}")
-            await update.message.reply_text("Format bulan salah. Gunakan MM-YYYY")
+        await update.message.reply_text(text)
         return
 
     # ======================
-    # FORMAT YYYY
+    # YYYY
     # ======================
     elif re.match(r"^\d{4}$", arg):
-        try:
-            year = int(arg)
+        year = int(arg)
+        data = get_year_monthly_summary(year)
 
-            print(f"[DEBUG] YEAR: {year}")
+        if not data:
+            await update.message.reply_text("Tidak ada data.")
+            return
 
-            data = get_year_monthly_summary(year)
+        text = f"History Tahun {year}\n\n"
 
-            if not data:
-                await update.message.reply_text("Tidak ada data.")
-                return
+        for month, tipe, amount in data:
+            text += f"{month}: {tipe} {format_rupiah(amount)}\n"
 
-            result = {}
-
-            for month, tipe, amount in data:
-                month = int(month)
-
-                if month not in result:
-                    result[month] = {"income": 0, "expense": 0}
-
-                result[month][tipe] = amount or 0
-
-            nama_bulan = [
-                "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-                "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
-            ]
-
-            text = f"History Tahun {year}\n\n"
-
-            total_income = 0
-            total_expense = 0
-
-            for m in range(1, 13):
-                income = result.get(m, {}).get("income", 0)
-                expense = result.get(m, {}).get("expense", 0)
-
-                if income == 0 and expense == 0:
-                    continue
-
-                total_income += income
-                total_expense += expense
-
-                text += (
-                    f"{nama_bulan[m-1]}:\n"
-                    f"  + {format_rupiah(income)}\n"
-                    f"  - {format_rupiah(expense)}\n"
-                    f"  = {format_rupiah(income - expense)}\n\n"
-                )
-
-            text += "--- TOTAL ---\n"
-            text += f"+ {format_rupiah(total_income)}\n"
-            text += f"- {format_rupiah(total_expense)}\n"
-            text += f"= {format_rupiah(total_income - total_expense)}"
-
-            await update.message.reply_text(text)
-
-        except Exception as e:
-            print(f"[ERROR YYYY] {e}")
-            await update.message.reply_text("Format tahun salah. Gunakan YYYY")
+        await update.message.reply_text(text)
         return
+
+    else:
+        await update.message.reply_text("Format tidak dikenali.")
 
     # ======================
     # FORMAT SALAH
