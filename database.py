@@ -133,6 +133,26 @@ def get_summary():
     return data
 
 # ======================
+# TOTAL SUMMARY (ALL TIME)
+# ======================
+def get_total_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT type, COALESCE(SUM(amount), 0)
+        FROM transactions
+        GROUP BY type
+    """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# ======================
 # TODAY SUMMARY
 # ======================
 def get_today_summary():
