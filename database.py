@@ -70,6 +70,51 @@ def wib(expr="created_at"):
     return f"{expr} AT TIME ZONE 'Asia/Jakarta'"
 
 # ======================
+# CATEGORY SUMMARY (ALL TIME)
+# ======================
+def get_category_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# ======================
+# TODAY CATEGORY SUMMARY
+# ======================
+def get_today_category_summary():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT category, COALESCE(SUM(amount), 0)
+        FROM transactions
+        WHERE type = 'expense'
+        AND DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+    """)
+
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return data
+
+# ======================
 # SUMMARY ALL
 # ======================
 def get_summary():
