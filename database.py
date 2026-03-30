@@ -102,7 +102,7 @@ def get_today_category_summary():
         SELECT category, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE type = 'expense'
-        AND DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
+        AND DATE({wib()}) = DATE((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
         GROUP BY category
         ORDER BY SUM(amount) DESC
     """)
@@ -162,7 +162,7 @@ def get_today_summary():
     cur.execute(f"""
         SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
-        WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
+        WHERE DATE({wib()}) = DATE((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
         GROUP BY type
     """)
 
@@ -182,7 +182,7 @@ def get_month_summary():
         SELECT type, COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE DATE_TRUNC('month', {wib()}) =
-              DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Jakarta')
+              DATE_TRUNC('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         GROUP BY type
     """)
 
@@ -205,7 +205,7 @@ def get_year_summary():
             COALESCE(SUM(amount), 0)
         FROM transactions
         WHERE DATE_TRUNC('year', {wib()}) =
-              DATE_TRUNC('year', NOW() AT TIME ZONE 'Asia/Jakarta')
+              DATE_TRUNC('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         GROUP BY month, type
         ORDER BY month
     """)
@@ -225,7 +225,7 @@ def get_today_transactions():
     cur.execute(f"""
         SELECT id, amount, type, category, description, created_at
         FROM transactions
-        WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')
+        WHERE DATE({wib()}) = DATE((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
         ORDER BY created_at DESC
     """)
 
@@ -326,28 +326,28 @@ def delete_range(mode):
     cur = conn.cursor()
 
     if mode == "today":
-        query = f"DELETE FROM transactions WHERE DATE({wib()}) = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')"
+        query = f"DELETE FROM transactions WHERE DATE({wib()}) = DATE((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'))
 
     elif mode == "week":
         query = f"""
         DELETE FROM transactions
         WHERE DATE_TRUNC('week', {wib()}) =
-              DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Jakarta')
+              DATE_TRUNC('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         """
 
     elif mode == "month":
         query = f"""
         DELETE FROM transactions
         WHERE DATE_TRUNC('month', {wib()}) =
-              DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Jakarta')
+              DATE_TRUNC('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         """
 
-    elif mode == "year":
-        query = f"""
-        DELETE FROM transactions
-        WHERE DATE_TRUNC('year', {wib()}) =
-              DATE_TRUNC('year', NOW() AT TIME ZONE 'Asia/Jakarta')
-        """
+   elif mode == "year":
+    query = f"""
+    DELETE FROM transactions
+    WHERE DATE_TRUNC('year', {wib()}) =
+          DATE_TRUNC('year', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+    """
     else:
         return 0
 
